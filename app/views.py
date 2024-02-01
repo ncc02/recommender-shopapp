@@ -1,7 +1,7 @@
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
-
+import random
 from rest_framework.views import APIView
 import numpy as np
 from pymongo import MongoClient
@@ -125,10 +125,11 @@ class Recommender(APIView):
     def post(self, request, format=None):
         # Lấy dữ liệu từ request body
         user_id = request.data.get('user_id', None)
-
+        page_size = request.data.get('page_size', None)
+        CollectUserData()
+          
         if user_id is not None:
             # Sử dụng user_id ở đây
-            CollectUserData()
             a = MatrixInit()
             K = 2  #latent_factors
             beta = 0.01 #leaning_rate
@@ -146,6 +147,8 @@ class Recommender(APIView):
                     
                     # Phân trang dữ liệu
                     paginator = RecommenderPagination()
+                    if page_size:
+                        paginator.page_size = page_size
                     result_page = paginator.paginate_queryset(recommended_items, request)
                     
                     return paginator.get_paginated_response(result_page)
@@ -154,7 +157,19 @@ class Recommender(APIView):
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)        
         else:
             # Xử lý trường hợp không có user_id
-            return Response({'error': 'Missing user_id'}, status=status.HTTP_400_BAD_REQUEST)
+            # Trả về một mảng gồm các key trong Item (phân trang như cũ)
+            
+            keys = list(Item.keys())
+            # print(keys)
+            random.shuffle(keys)
+            # print('random', keys)
+            # Phân trang dữ liệu
+            paginator = RecommenderPagination()
+            if page_size:
+                paginator.page_size = page_size
+            result_page = paginator.paginate_queryset(keys, request)
+            
+            return paginator.get_paginated_response(result_page)
 
 
     
