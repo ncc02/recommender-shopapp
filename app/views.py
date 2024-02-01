@@ -144,6 +144,9 @@ class Recommender(APIView):
                     vec.sort(key=lambda x: x[0], reverse=True)
 
                     recommended_items = [IndexItem[index] for _, index in vec if (str(user_id), IndexItem[index]) not in UserItemBuy]
+                    for _, index in vec:
+                        if (str(user_id), IndexItem[index]) in UserItemBuy:
+                            recommended_items.append(IndexItem[index])
                     
                     # Phân trang dữ liệu
                     paginator = RecommenderPagination()
