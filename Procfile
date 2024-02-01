@@ -1,1 +1,1 @@
-web: gunicorn project_shopapp.wsgi
+web: python manage.py migrate && python manage.py collectstatic --no-input && gunicorn project_shopapp.wsgi
