@@ -5,14 +5,16 @@ import random
 from rest_framework.views import APIView
 import numpy as np
 from pymongo import MongoClient
-from datetime import datetime, timedelta
 
-def CollectData():
-    User = []
-    Item = {}
-    UserItem = {}
-    UserItemBuy = {}
+User = []
+Item = {}
+IndexItem = {}
+UserItem = {}
+UserItemBuy = {}
 
+
+def CollectUserData():
+    
     # Thay đổi các thông số kết nối dựa trên thông tin của bạn
     mongodb_uri = "mongodb+srv://shopapp:shopapp@cluster0.y1hhe4z.mongodb.net/test"
     database_name = "test"
@@ -46,8 +48,20 @@ def CollectData():
                     Item[v] = key
                     UserItem[(User[-1], v)]= 5
                     UserItemBuy[(str(User[-1]), v)] = True
-    
+        
+    # Đóng kết nối
+    client.close()
+
+def CollectItems():
+    Product = []
+    # Thay đổi các thông số kết nối dựa trên thông tin của bạn
+    mongodb_uri = "mongodb+srv://shopapp:shopapp@cluster0.y1hhe4z.mongodb.net/test"
+    database_name = "test"
     collection_name = "Product"
+
+    # Kết nối đến MongoDB
+    client = MongoClient(mongodb_uri)
+
     # Chọn cơ sở dữ liệu và collection
     db = client[database_name]
     collection = db[collection_name]
@@ -55,73 +69,105 @@ def CollectData():
     # Lấy tất cả các documents từ collection
     documents = collection.find()
 
-    User.append("Guest")
     # In ra các documents
     for document in documents:
         for key, val in document.items():
             if (key == "_id"):
-                Item[str(val)] = key
-                UserItem[(User[-1], str(val))]= 0
-
+                Product.append(str(val))
+               
     # Đóng kết nối
     client.close()
-    return (User, Item, UserItem, UserItemBuy)
+    return Product
 
-def MatrixInit(User, Item, UserItem):
-    # print('User: ', *User) ############################3333333
-    # print('Item: ', *Item) ###################################
-    IndexItem = {}
-    
+
+def MatrixInit():
+    # print('User: ', *User)
+    # print('Item: ', *Item)
     for index, item in enumerate(Item):
         IndexItem[index] = item
 
     for user in User:
         for item in Item:
             UserItem[(user, item)] = UserItem.get((user, item), np.nan)
-            # print('user', user, '+ item', item, '->', UserItem[(user, item)]) ###############################
+            # print('user', user, '+ item', item, '->', UserItem[(user, item)])
 
     interaction_weights_list = [
         [UserItem.get((user, item), np.nan) for item in Item] for user in User
     ]
 
-    return np.array(interaction_weights_list), IndexItem
+    return np.array(interaction_weights_list)
 
 class RecommenderPagination(PageNumberPagination):
     page_size = 3
     page_size_query_param = 'page_size'
     max_page_size = 100
 
-def baseline(a, _u, user, item):
-  
-  bias_user = np.nanmean(a[user, :]) - _u
-  bias_item = np.nanmean(a[:, item]) - _u
 
-  return _u + bias_user + bias_item
+def matrix_factorization_upgrade(a, K, beta, lamda, epos):
 
-class Recommender(APIView):        
-        
+  users, items = a.shape
+
+  W = np.random.rand(users, K)
+  H = np.random.rand(items, K)
+
+  #upgrade
+  _u = np.nanmean(a)
+
+  bias_users = []
+  bias_items = []
+  for u in range(users):
+    bias_users.append(np.nanmean(a[u, :]) - _u)
+
+  for i in range(items):
+    bias_items.append(np.nanmean(a[:, i]) - _u)
+  #######
+
+  a[np.isnan(a)] = 0
+#   print(a)
+  # Training
+  for step in range(epos):
+      for u in range(users):
+          for i in range(items):
+              if a[u, i] > 0:
+
+                  aui = _u + bias_users[u] + bias_items[i] + np.dot(W[u, :], H[i, :])
+
+                  error = a[u, i] - aui
+                  _u = _u + beta * error
+                  bias_users[u] = bias_users[u] + beta * (error - lamda * bias_users[u])
+                  bias_items[i] = bias_items[i] + beta * (error - lamda * bias_items[i])
+
+                  for k in range(K):
+
+                      W[u, k] += beta * (error * H[i, k] - lamda * W[u, k])
+                      H[i, k] += beta * (error * W[u, k] - lamda * H[i, k])
+    #   print('epos',step,'loss:',error)
+  matrix = np.dot(W, H.T)
+  for u in range(users):
+    for i in range(items):
+      matrix[u][i] += _u + bias_users[u] + bias_items[i]
+  return matrix
+
+
+class Recommender(APIView):
+
     def post(self, request, format=None):
         # Lấy dữ liệu từ request body
+        
         user_id = request.data.get('user_id', None)
         page_size = request.data.get('page_size', None)
-
-        User, Item, UserItem, UserItemBuy = CollectData()
+        CollectUserData()
+        Product = CollectItems()
         
         if user_id is not None:
             # Sử dụng user_id ở đây
-
-            a, IndexItem = MatrixInit(User, Item, UserItem)
-            _u = np.nanmean(a)
-
-            matrix = []
-            for u in range(User):
-                v = []
-                for i in range(Item):
-                    v.append(baseline(a, _u, u, i))
-                matrix.append(v)  
-
-            # print(matrix) ###########################
-
+            a = MatrixInit()
+            K = 2  #latent_factors
+            beta = 0.01 #leaning_rate
+            lamda = 0.02 #regularization
+            epos = 69
+            items = []
+            matrix = matrix_factorization_upgrade(a, K, beta, lamda, epos)
             for index, user in enumerate(User):
                 if str(user_id) == str(user):
                     items = matrix[index, :].copy()
@@ -132,6 +178,18 @@ class Recommender(APIView):
                     for _, index in vec:
                         if (str(user_id), IndexItem[index]) in UserItemBuy:
                             recommended_items.append(IndexItem[index])
+
+                    product = []
+                    for p in Product:
+                        Found = False
+                        for i in recommended_items:
+                            if (str(i) == p):
+                                Found = True
+                                break
+                        if not Found:
+                            product.append(i)
+                    
+                    recommended_items += product
 
                     # Phân trang dữ liệu
                     paginator = RecommenderPagination()
@@ -150,8 +208,20 @@ class Recommender(APIView):
             keys = list(Item.keys())
             # print(keys)
             random.shuffle(keys)
-            # print('len keys', len(keys)) #################################
-        
+            print('len product', len(Product))
+            product = []
+            for p in Product:
+                Found = False
+                for i in keys:
+                    if (str(i) == p):
+                        Found = True
+                        break
+                if not Found:
+                    product.append(i)
+            
+            keys += product
+            # print('random', keys)
+            # Phân trang dữ liệu
             paginator = RecommenderPagination()
             if page_size:
                 paginator.page_size = page_size
