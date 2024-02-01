@@ -12,7 +12,9 @@ IndexItem = {}
 UserItem = {}
 UserItemBuy = {}
 
+
 def CollectUserData():
+    
     # Thay đổi các thông số kết nối dựa trên thông tin của bạn
     mongodb_uri = "mongodb+srv://shopapp:shopapp@cluster0.y1hhe4z.mongodb.net/test"
     database_name = "test"
@@ -49,6 +51,33 @@ def CollectUserData():
         
     # Đóng kết nối
     client.close()
+
+def CollectItems():
+    Product = []
+    # Thay đổi các thông số kết nối dựa trên thông tin của bạn
+    mongodb_uri = "mongodb+srv://shopapp:shopapp@cluster0.y1hhe4z.mongodb.net/test"
+    database_name = "test"
+    collection_name = "Product"
+
+    # Kết nối đến MongoDB
+    client = MongoClient(mongodb_uri)
+
+    # Chọn cơ sở dữ liệu và collection
+    db = client[database_name]
+    collection = db[collection_name]
+
+    # Lấy tất cả các documents từ collection
+    documents = collection.find()
+
+    # In ra các documents
+    for document in documents:
+        for key, val in document.items():
+            if (key == "_id"):
+                Product.append(str(val))
+               
+    # Đóng kết nối
+    client.close()
+    return Product
 
 
 def MatrixInit():
@@ -124,10 +153,12 @@ class Recommender(APIView):
 
     def post(self, request, format=None):
         # Lấy dữ liệu từ request body
+        
         user_id = request.data.get('user_id', None)
         page_size = request.data.get('page_size', None)
         CollectUserData()
-          
+        Product = CollectItems()
+        
         if user_id is not None:
             # Sử dụng user_id ở đây
             a = MatrixInit()
@@ -147,7 +178,19 @@ class Recommender(APIView):
                     for _, index in vec:
                         if (str(user_id), IndexItem[index]) in UserItemBuy:
                             recommended_items.append(IndexItem[index])
+
+                    product = []
+                    for p in Product:
+                        Found = False
+                        for i in recommended_items:
+                            if (str(i) == p):
+                                Found = True
+                                break
+                        if not Found:
+                            product.append(i)
                     
+                    recommended_items += product
+
                     # Phân trang dữ liệu
                     paginator = RecommenderPagination()
                     if page_size:
@@ -165,6 +208,18 @@ class Recommender(APIView):
             keys = list(Item.keys())
             # print(keys)
             random.shuffle(keys)
+            print('len product', len(Product))
+            product = []
+            for p in Product:
+                Found = False
+                for i in keys:
+                    if (str(i) == p):
+                        Found = True
+                        break
+                if not Found:
+                    product.append(i)
+            
+            keys += product
             # print('random', keys)
             # Phân trang dữ liệu
             paginator = RecommenderPagination()
