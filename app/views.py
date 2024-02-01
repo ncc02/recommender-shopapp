@@ -165,7 +165,7 @@ class Recommender(APIView):
             K = 2  #latent_factors
             beta = 0.01 #leaning_rate
             lamda = 0.02 #regularization
-            epos = 1000 
+            epos = 69
             items = []
             matrix = matrix_factorization_upgrade(a, K, beta, lamda, epos)
             for index, user in enumerate(User):
