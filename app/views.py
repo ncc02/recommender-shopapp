@@ -5,6 +5,7 @@ import random
 from rest_framework.views import APIView
 import numpy as np
 from pymongo import MongoClient
+from datetime import datetime, timedelta
 
 User = []
 Item = {}
@@ -17,7 +18,7 @@ def CollectUserData():
     
     # Thay đổi các thông số kết nối dựa trên thông tin của bạn
     mongodb_uri = "mongodb+srv://shopapp:shopapp@cluster0.y1hhe4z.mongodb.net/test"
-    database_name = "test"
+    database_name = "prod"
     collection_name = "UserData"
 
     # Kết nối đến MongoDB
@@ -56,7 +57,7 @@ def CollectItems():
     Product = []
     # Thay đổi các thông số kết nối dựa trên thông tin của bạn
     mongodb_uri = "mongodb+srv://shopapp:shopapp@cluster0.y1hhe4z.mongodb.net/test"
-    database_name = "test"
+    database_name = "prod"
     collection_name = "Product"
 
     # Kết nối đến MongoDB
@@ -98,7 +99,7 @@ def MatrixInit():
     return np.array(interaction_weights_list)
 
 class RecommenderPagination(PageNumberPagination):
-    page_size = 3
+    page_size = 4
     page_size_query_param = 'page_size'
     max_page_size = 100
 
@@ -148,86 +149,145 @@ def matrix_factorization_upgrade(a, K, beta, lamda, epos):
       matrix[u][i] += _u + bias_users[u] + bias_items[i]
   return matrix
 
+from app.models import User as Kh
+from app.models import Item as Sp
+from app.models import UserItem as KhSp
 
+from django.utils import timezone
 class Recommender(APIView):
 
     def post(self, request, format=None):
         # Lấy dữ liệu từ request body
         
         user_id = request.data.get('user_id', None)
-        page_size = request.data.get('page_size', None)
-        CollectUserData()
-        Product = CollectItems()
+        page_size = request.data.get('page_size', None) 
+        collect_data = request.data.get('collect_data', "0")
+        try:
+            KH = Kh.objects.get(id=user_id)
+            time_prev = KH.lasttime
+            time_threshold = time_prev + timedelta(hours=12)
+        except:
+            collect_data = "1"
+
         
-        if user_id is not None:
-            # Sử dụng user_id ở đây
-            a = MatrixInit()
-            K = 2  #latent_factors
-            beta = 0.01 #leaning_rate
-            lamda = 0.02 #regularization
-            epos = 69
-            items = []
-            matrix = matrix_factorization_upgrade(a, K, beta, lamda, epos)
-            for index, user in enumerate(User):
-                if str(user_id) == str(user):
-                    items = matrix[index, :].copy()
-                    vec = [(item, index) for index, item in enumerate(items)]
-                    vec.sort(key=lambda x: x[0], reverse=True)
+        if collect_data == "0" and timezone.now() <= time_threshold:
+            # return Response({'now':str(timezone.now()), 'prev':str(time_threshold) })
+            if user_id != None:
+                user_items = KhSp.objects.filter(id_user=user_id).order_by('-rating')
+            else:
+                user_items = KhSp.objects.order_by('?').first()
 
-                    recommended_items = [IndexItem[index] for _, index in vec if (str(user_id), IndexItem[index]) not in UserItemBuy]
-                    for _, index in vec:
-                        if (str(user_id), IndexItem[index]) in UserItemBuy:
-                            recommended_items.append(IndexItem[index])
-
-                    product = []
-                    for p in Product:
-                        Found = False
-                        for i in recommended_items:
-                            if (str(i) == p):
-                                Found = True
-                                break
-                        if not Found:
-                            product.append(i)
-                    
-                    recommended_items += product
-
-                    # Phân trang dữ liệu
-                    paginator = RecommenderPagination()
-                    if page_size:
-                        paginator.page_size = page_size
-                    result_page = paginator.paginate_queryset(recommended_items, request)
-                    
-                    return paginator.get_paginated_response(result_page)
-                
-            # Rest of your code
-            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)        
-        else:
-            # Xử lý trường hợp không có user_id
-            # Trả về một mảng gồm các key trong Item (phân trang như cũ)
+            recommended_items = list(set(item.id_item.id for item in user_items))
             
-            keys = list(Item.keys())
-            # print(keys)
-            random.shuffle(keys)
-            print('len product', len(Product))
-            product = []
-            for p in Product:
-                Found = False
-                for i in keys:
-                    if (str(i) == p):
-                        Found = True
-                        break
-                if not Found:
-                    product.append(i)
-            
-            keys += product
-            # print('random', keys)
             # Phân trang dữ liệu
             paginator = RecommenderPagination()
             if page_size:
                 paginator.page_size = page_size
-            result_page = paginator.paginate_queryset(keys, request)
-            
+            result_page = paginator.paginate_queryset(recommended_items, request)
+                    
             return paginator.get_paginated_response(result_page)
+
+        else:
+            # return Response({'now':str(datetime.now()), 'prev':str(time_threshold) })
+            CollectUserData()
+            Product = CollectItems()
+            
+            if user_id is not None:
+                # Sử dụng user_id ở đây
+                a = MatrixInit()
+                K = 2  #latent_factors
+                beta = 0.01 #leaning_rate
+                lamda = 0.02 #regularization
+                epos = 69
+                items = []
+                rating = {}
+                matrix = matrix_factorization_upgrade(a, K, beta, lamda, epos)
+                for index, user in enumerate(User):
+                    if str(user_id) == str(user):
+                        items = matrix[index, :].copy()
+                        vec = [(item, index) for index, item in enumerate(items)]
+                        vec.sort(key=lambda x: x[0], reverse=True)
+
+                        recommended_items = [IndexItem[index] for _, index in vec if (str(user_id), IndexItem[index]) not in UserItemBuy]
+                        for point, index in vec:
+                            if (str(user_id), IndexItem[index]) not in UserItemBuy:
+                                rating[IndexItem[index]] = point
+                        for _, index in vec:
+                            if (str(user_id), IndexItem[index]) in UserItemBuy:
+                                rating[IndexItem[index]] = point
+                                recommended_items.append(IndexItem[index])
+
+                        product = []
+                        for p in Product:
+                            Found = False
+                            for i in recommended_items:
+                                if (str(i) == p):
+                                    Found = True
+                                    break
+                            if not Found:
+                                product.append(p)
+                        
+                        recommended_items += product
+
+                        current_time = timezone.now()
+                        Kh.objects.filter(id=user_id).delete()
+                        user_object, created = Kh.objects.get_or_create(id=user_id)
+                        user_object.lasttime = current_time
+                        user_object.save()
+                        
+                        cnt = 0
+                        for item_id in recommended_items:
+
+                            item_object, created = Sp.objects.get_or_create(id=item_id)
+                            item_object.save()
+                          
+                            try:
+                                point = rating[item_id]
+                            except:
+                                point = 0
+                    
+                            
+                            useritem_object = KhSp.objects.create(id_user=user_object, id_item=item_object, rating=point)
+                            useritem_object.save()
+                            
+
+                        # Phân trang dữ liệu
+                        paginator = RecommenderPagination()
+                        if page_size:
+                            paginator.page_size = page_size
+                        result_page = paginator.paginate_queryset(recommended_items, request)
+                        
+                        return paginator.get_paginated_response(result_page)
+                        # return Response({"cnt":str(cnt)})
+                # Rest of your code
+                return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)        
+            else:
+                # Xử lý trường hợp không có user_id
+                # Trả về một mảng gồm các key trong Item (phân trang như cũ)
+                
+                keys = list(Item.keys())
+                # print(keys)
+                random.shuffle(keys)
+                print('len product', len(Product))
+                product = []
+                for p in Product:
+                    Found = False
+                    for i in keys:
+                        if (str(i) == p):
+                            Found = True
+                            break
+                    if not Found:
+                        product.append(p)
+                
+                keys += product
+                # print('random', keys)
+                # Phân trang dữ liệu
+                paginator = RecommenderPagination()
+                if page_size:
+                    paginator.page_size = page_size
+                result_page = paginator.paginate_queryset(keys, request)
+                
+                return paginator.get_paginated_response(result_page)
 
 
     
