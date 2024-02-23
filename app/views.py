@@ -152,7 +152,7 @@ def matrix_factorization_upgrade(a, K, beta, lamda, epos):
 from app.models import User as Kh
 from app.models import Item as Sp
 from app.models import UserItem as KhSp
-
+from django.http import JsonResponse
 from django.utils import timezone
 class Recommender(APIView):
 
@@ -171,14 +171,19 @@ class Recommender(APIView):
 
         
         if collect_data == "0" and timezone.now() <= time_threshold:
+            
             # return Response({'now':str(timezone.now()), 'prev':str(time_threshold) })
             if user_id != None:
                 user_items = KhSp.objects.filter(id_user=user_id).order_by('-rating')
+                recommended_items = user_items.values_list('id_item', flat=True)
             else:
-                user_items = KhSp.objects.order_by('?').first()
-
-            recommended_items = list(set(item.id_item.id for item in user_items))
+                recommended_items = Sp.objects.all().order_by('?').values_list('id', flat=True)
             
+       
+            
+            if len(recommended_items)==0:
+                recommended_items = Sp.objects.all().order_by('?').values_list('id', flat=True)
+                
             # Phân trang dữ liệu
             paginator = RecommenderPagination()
             if page_size:
@@ -258,45 +263,14 @@ class Recommender(APIView):
                         result_page = paginator.paginate_queryset(recommended_items, request)
                         
                         return paginator.get_paginated_response(result_page)
-                        # return Response({"cnt":str(cnt)})
-                # Rest of your code
 
-
-                user_items = KhSp.objects.all().order_by('-rating')
-    
-                recommended_items = list(set(item.id_item.id for item in user_items))
-####
+                
                 current_time = timezone.now()
                 Kh.objects.filter(id=user_id).delete()
                 user_object, created = Kh.objects.get_or_create(id=user_id)
                 user_object.lasttime = current_time
                 user_object.save()
-                
-                cnt = 0
-                for item_id in recommended_items:
-
-                    item_object, created = Sp.objects.get_or_create(id=item_id)
-                    item_object.save()
-                  
-                    try:
-                        point = rating[item_id]
-                    except:
-                        point = 0
-            
-                    
-                    useritem_object = KhSp.objects.create(id_user=user_object, id_item=item_object, rating=point)
-                    useritem_object.save()
-                
-                # Phân trang dữ liệu
-                paginator = RecommenderPagination()
-                if page_size:
-                    paginator.page_size = page_size
-                result_page = paginator.paginate_queryset(recommended_items, request)
-                        
-                return paginator.get_paginated_response(result_page)
-
-                
-                return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)        
+                return Response({'state': 'saved data for django, next API will FAST'}, status=status.HTTP_404_NOT_FOUND)        
             else:
                 # Xử lý trường hợp không có user_id
                 # Trả về một mảng gồm các key trong Item (phân trang như cũ)
