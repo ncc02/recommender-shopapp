@@ -265,6 +265,27 @@ class Recommender(APIView):
                 user_items = KhSp.objects.all().order_by('-rating')
     
                 recommended_items = list(set(item.id_item.id for item in user_items))
+####
+                current_time = timezone.now()
+                Kh.objects.filter(id=user_id).delete()
+                user_object, created = Kh.objects.get_or_create(id=user_id)
+                user_object.lasttime = current_time
+                user_object.save()
+                
+                cnt = 0
+                for item_id in recommended_items:
+
+                    item_object, created = Sp.objects.get_or_create(id=item_id)
+                    item_object.save()
+                  
+                    try:
+                        point = rating[item_id]
+                    except:
+                        point = 0
+            
+                    
+                    useritem_object = KhSp.objects.create(id_user=user_object, id_item=item_object, rating=point)
+                    useritem_object.save()
                 
                 # Phân trang dữ liệu
                 paginator = RecommenderPagination()
