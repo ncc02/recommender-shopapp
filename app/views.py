@@ -260,6 +260,21 @@ class Recommender(APIView):
                         return paginator.get_paginated_response(result_page)
                         # return Response({"cnt":str(cnt)})
                 # Rest of your code
+
+
+                user_items = KhSp.objects.order_by('?').first()
+    
+                recommended_items = list(set(item.id_item.id for item in user_items))
+                
+                # Phân trang dữ liệu
+                paginator = RecommenderPagination()
+                if page_size:
+                    paginator.page_size = page_size
+                result_page = paginator.paginate_queryset(recommended_items, request)
+                        
+                return paginator.get_paginated_response(result_page)
+
+                
                 return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)        
             else:
                 # Xử lý trường hợp không có user_id
