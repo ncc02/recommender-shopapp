@@ -262,7 +262,7 @@ class Recommender(APIView):
                 # Rest of your code
 
 
-                user_items = KhSp.objects.order_by('?').first()
+                user_items = KhSp.objects.all().order_by('-rating')
     
                 recommended_items = list(set(item.id_item.id for item in user_items))
                 
