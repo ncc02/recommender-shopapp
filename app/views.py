@@ -194,10 +194,9 @@ class Recommender(APIView):
 
         else:
             # return Response({'now':str(datetime.now()), 'prev':str(time_threshold) })
-            CollectUserData()
-            Product = CollectItems()
-            
             if user_id is not None:
+                CollectUserData()
+                Product = CollectItems()
                 # Sử dụng user_id ở đây
                 a = MatrixInit()
                 K = 2  #latent_factors
@@ -275,29 +274,37 @@ class Recommender(APIView):
                 # Xử lý trường hợp không có user_id
                 # Trả về một mảng gồm các key trong Item (phân trang như cũ)
                 
-                keys = list(Item.keys())
-                # print(keys)
-                random.shuffle(keys)
-                print('len product', len(Product))
-                product = []
-                for p in Product:
-                    Found = False
-                    for i in keys:
-                        if (str(i) == p):
-                            Found = True
-                            break
-                    if not Found:
-                        product.append(p)
+                # keys = list(Item.keys())
+                # # print(keys)
+                # random.shuffle(keys)
+                # print('len product', len(Product))
+                # product = []
+                # for p in Product:
+                #     Found = False
+                #     for i in keys:
+                #         if (str(i) == p):
+                #             Found = True
+                #             break
+                #     if not Found:
+                #         product.append(p)
                 
-                keys += product
-                # print('random', keys)
+                # keys += product
+                # # print('random', keys)
+                # Phân trang dữ liệu
+                # paginator = RecommenderPagination()
+                # if page_size:
+                #     paginator.page_size = page_size
+                # result_page = paginator.paginate_queryset(keys, request)
+                
+                # return paginator.get_paginated_response(result_page)
+                recommended_items = Sp.objects.all().order_by('?').values_list('id', flat=True)
+                
                 # Phân trang dữ liệu
                 paginator = RecommenderPagination()
                 if page_size:
                     paginator.page_size = page_size
-                result_page = paginator.paginate_queryset(keys, request)
-                
+                result_page = paginator.paginate_queryset(recommended_items, request)
+                        
                 return paginator.get_paginated_response(result_page)
-
 
     
